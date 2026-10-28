@@ -39,6 +39,8 @@ class EditorCanvas(QOpenGLWidget):
         self.pan = QPointF(0, 0)  # view offset in widget px
         self._pan_drag: tuple[QPointF, QPointF] | None = None
         self.lasso_mode = False
+        self.show_outlines = True  # outlines and corner handles over every surface; off to see the media bare
+        self.show_labels = True  # the name tag at each surface's centre
         self._lasso: list[tuple[float, float]] = []  # output-space points being drawn
         self._lasso_dragging = False
         self.setFocusPolicy(Qt.StrongFocus)
@@ -113,6 +115,15 @@ class EditorCanvas(QOpenGLWidget):
         self.pan = QPointF(0, 0)
         self.update()
 
+
+    def set_show_outlines(self, on: bool):
+        self.show_outlines = bool(on)
+        self.update()
+
+    def set_show_labels(self, on: bool):
+        self.show_labels = bool(on)
+        self.update()
+
     def wheelEvent(self, ev: QWheelEvent):
         d = ev.angleDelta().y()
         if d == 0:
@@ -167,7 +178,10 @@ class EditorCanvas(QOpenGLWidget):
         painter.setFont(font)
         uv_surf = self._uv_surface()
         surfaces = [uv_surf] if uv_surf else self.state.project.surfaces
-        for surf in surfaces:
+        # UV mode and the lasso always draw their geometry; otherwise the strip's tick boxes decide
+        outlines = self.show_outlines or bool(uv_surf) or self.lasso_mode
+        labels = self.show_labels or bool(uv_surf)
+        for surf in surfaces if outlines or labels else []:
             sel = surf.id == self.state.selected
             color = COLORS["selected"] if sel else COLORS[surf.kind]
             pts = [self.to_widget(c) for c in self._points(surf)]
@@ -178,17 +192,20 @@ class EditorCanvas(QOpenGLWidget):
                 pen.setColor(QColor(255, 0, 255))
             painter.setPen(pen)
             painter.setBrush(Qt.NoBrush)
-            if surf.mesh is not None:
-                self._draw_mesh_overlay(painter, surf, pts, color, sel)
-            else:
-                for i in range(4):
-                    painter.drawLine(pts[i], pts[(i + 1) % 4])
-            for i, p in enumerate(pts):
-                active = sel and self.state.active_corner == i
-                painter.setPen(QPen(color, 1))
-                painter.setBrush(QBrush(color) if active else QBrush(QColor(0, 0, 0, 160)))
-                r = HANDLE_R if surf.mesh is None or sel else HANDLE_R * 0.6
-                painter.drawRect(QRectF(p.x() - r, p.y() - r, r * 2, r * 2))
+            if outlines:
+                if surf.mesh is not None:
+                    self._draw_mesh_overlay(painter, surf, pts, color, sel)
+                else:
+                    for i in range(4):
+                        painter.drawLine(pts[i], pts[(i + 1) % 4])
+                for i, p in enumerate(pts):
+                    active = sel and self.state.active_corner == i
+                    painter.setPen(QPen(color, 1))
+                    painter.setBrush(QBrush(color) if active else QBrush(QColor(0, 0, 0, 160)))
+                    r = HANDLE_R if surf.mesh is None or sel else HANDLE_R * 0.6
+                    painter.drawRect(QRectF(p.x() - r, p.y() - r, r * 2, r * 2))
+            if not labels:
+                continue
             if uv_surf:
                 label = f"UV mode: {surf.name}  (U to leave)"
             else:

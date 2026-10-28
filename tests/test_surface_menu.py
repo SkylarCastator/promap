@@ -234,3 +234,64 @@ def test_project_toggle_opens_and_closes_output(state, monkeypatch):
     assert calls[-1] == "close" and w.output is None and not w.live_act.isChecked() and w.live_act.text() == "● Project"
     w.state.dirty = False
     w.close()
+
+
+def test_outline_and_label_tick_boxes(state):
+    from PySide6.QtWidgets import QCheckBox, QMenu
+    from promap.ui.main_window import MainWindow
+
+    w = MainWindow(state)
+    boxes = {b.text(): b for b in w.view_bar.findChildren(QCheckBox)}
+    assert set(boxes) == {"Outlines", "Labels"}
+    assert w.canvas.show_outlines and w.canvas.show_labels
+    boxes["Outlines"].setChecked(False)
+    assert not w.canvas.show_outlines and not w.outlines_act.isChecked()
+    w.labels_act.setChecked(False)  # the View menu action mirrors the box
+    assert not w.canvas.show_labels and not boxes["Labels"].isChecked()
+    view = next(m for m in w.menuBar().findChildren(QMenu) if m.title() == "&View")
+    texts = [a.text() for a in view.actions()]
+    assert "Outlines" in texts and "Labels" in texts
+    assert w.outlines_act.shortcut().toString() == "H" and w.labels_act.shortcut().toString() == "Shift+H"
+    w.state.dirty = False
+    w.close()
+
+
+def test_camera_window_finds_the_editor_for_the_output_check(state):
+    from promap.ui.main_window import MainWindow
+
+    w = MainWindow(state)
+    w.open_camera_window()
+    assert w.camera_panel.window() is w.camera_window and w.camera_panel._main() is w
+    w.state.dirty = False
+    w.close()
+
+
+def test_open_output_retries_when_the_screen_goes_stale(state, monkeypatch):
+    import promap.ui.main_window as mw
+
+    opened = []
+
+    class FakeOut:
+        calls = 0
+
+        def __init__(self, st):
+            self.closed = type("Sig", (), {"connect": lambda self, fn: None})()
+
+        def open_on(self, screen):
+            FakeOut.calls += 1
+            if FakeOut.calls == 1:
+                raise RuntimeError("libshiboken: Internal C++ object (PySide6.QtGui.QScreen) already deleted.")
+            opened.append(screen.name())
+
+        def close(self):
+            pass
+
+        def screen(self):
+            return None
+
+    monkeypatch.setattr(mw, "OutputWindow", FakeOut)
+    w = mw.MainWindow(state)
+    w.open_output(None)
+    assert FakeOut.calls == 2 and len(opened) == 1 and w.output is not None
+    w.state.dirty = False
+    w.close()

@@ -92,3 +92,16 @@ def test_new_surfaces_start_with_the_alignment_grid():
     m = st.add_mesh_surface(triangle_mesh([[0, 0], [100, 0], [0, 100]]), "Lasso 1")
     assert all(s.media == DEFAULT_SURFACE_MEDIA for s in (q, tri, sq, m))
     assert st.add_surface("mask").media is None
+
+
+def test_alignment_grid_background_is_transparent(ctx):
+    from promap.render.gen import GenRenderer
+
+    r = GenRenderer(ctx)
+    f = g.GenFrame("alignment_grid", g.EFFECTS["alignment_grid"].normalize({}), 0.0, (128, 96))
+    assert r.texture_for("L", f) is not None, r.errors
+    fbo = r.fbos["L"][0]
+    rgba = np.frombuffer(fbo.read(components=4), dtype=np.uint8).reshape(96, 128, 4)
+    alpha = rgba[..., 3]
+    assert alpha.min() == 0 and alpha.max() == 255  # see-through cells, opaque lines
+    assert 0.1 < (alpha > 0).mean() < 0.7

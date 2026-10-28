@@ -28,12 +28,18 @@ MEDIA_TYPES = [
     ("Video", "video"),
     ("Animated image (GIF / WebP)", "anim"),
     ("Animation (built-in)", "gen"),
+    ("Mask (black cut-out)", "mask"),
 ]
 MEDIA_FILTERS = {
     "image": "Images (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;All files (*)",
     "video": "Video (*.mp4 *.mov *.avi *.mkv *.webm *.m4v *.mpg *.mpeg);;All files (*)",
     "anim": "Animated images (*.gif *.webp *.apng);;All files (*)",
 }
+
+
+def surface_type(s) -> str:
+    """Which MEDIA_TYPES key a surface shows as: its kind when it is a mask, else its media."""
+    return "mask" if s.kind == "mask" else media_kind(s.media)
 
 
 def media_kind(media) -> str:
@@ -59,7 +65,9 @@ class SurfacePanel(QWidget):
 
         self.list = QListWidget()
         self.list.setMinimumHeight(180)
+        self.list.setToolTip("Tick = shown on the output. Right-click a surface for duplicate, delete, order, lock, hide, mask.")
         self.list.currentRowChanged.connect(self._on_row)
+        self.list.itemChanged.connect(self._item_changed)
         lay.addWidget(self.list, 1)
 
         self.list.setContextMenuPolicy(Qt.CustomContextMenu)
@@ -305,12 +313,25 @@ class SurfacePanel(QWidget):
             glyph = {"mask": "▣", "reference": "▦"}.get(s.kind, "△" if s.mesh is not None else "▢")
             it = QListWidgetItem(f"{glyph} {s.name}" + (f"  [{s.item_type}]" if s.item_type else ""))
             it.setData(Qt.UserRole, s.id)
+            it.setFlags(it.flags() | Qt.ItemIsUserCheckable)
+            it.setCheckState(Qt.Checked if s.visible else Qt.Unchecked)
+            if not s.visible:
+                it.setForeground(QColor(130, 130, 130))
             self.list.addItem(it)
             if s.id == self.state.selected:
                 self.list.setCurrentItem(it)
         self._loading = False
         if self.state.selected:
             self._refresh_props(self.state.selected)
+
+    def _item_changed(self, it: QListWidgetItem):
+        """The tick in the list: show / hide the surface on the output."""
+        if self._loading:
+            return
+        s = self.state.project.surface_by_id(it.data(Qt.UserRole))
+        if s is not None and s.visible != (it.checkState() == Qt.Checked):
+            s.visible = it.checkState() == Qt.Checked
+            self.state.surface_edited(s.id)
 
     def _on_row(self, row: int):
         if self._loading:
@@ -395,10 +416,10 @@ class SurfacePanel(QWidget):
     # -- media type ------------------------------------------------------------------
     def _layout_media(self, s):
         """Show the picker and the options that make sense for what the surface shows."""
-        kind = media_kind(s.media)
+        kind = surface_type(s)
         is_media = s.kind == "media"
         self.media_type.setCurrentIndex(self.media_type.findData(kind))
-        self.form.setRowVisible(self.media_type, is_media)
+        self.form.setRowVisible(self.media_type, s.kind in ("media", "mask"))
         self.form.setRowVisible(self.media_pick, s.kind != "mask" and kind != "none")
         self.media_pick.setCurrentIndex(1 if kind == "gen" else 0)
         if kind == "gen":
@@ -424,9 +445,20 @@ class SurfacePanel(QWidget):
         if self._loading or s is None:
             return
         kind = self.media_type.currentData()
-        cur = media_kind(s.media)
+        cur = surface_type(s)
         if kind == cur:
             return
+        if kind == "mask":
+            s.kind = "mask"  # the media string is kept, so switching back restores it
+            self.state.surface_edited(s.id)
+            self._refresh_props(s.id)
+            return
+        if s.kind == "mask":
+            s.kind = "media"
+            if kind == media_kind(s.media):
+                self.state.surface_edited(s.id)
+                self._refresh_props(s.id)
+                return
         if kind == "none":
             self._set_media(s, None)
         elif kind == "gen":
@@ -436,8 +468,10 @@ class SurfacePanel(QWidget):
             if path:
                 self._set_media(s, path)
             else:  # cancelled: the combo goes back to what the surface really shows
+                if cur == "mask":
+                    s.kind = "mask"
                 self._loading = True
-                self.media_type.setCurrentIndex(self.media_type.findData(cur))
+                self.media_type.setCurrentIndex(self.media_type.findData(surface_type(s)))
                 self._loading = False
 
     def _anim_chosen(self, _idx: int):

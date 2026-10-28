@@ -41,7 +41,9 @@ void main() {
     float a = opacity;
     vec3 c;
     if (use_tex) {
-        vec3 t = texture(tex, v_uv).rgb;
+        vec4 t4 = texture(tex, v_uv);
+        vec3 t = t4.rgb;
+        a *= t4.a;  // RGB uploads sample alpha 1; generated textures may be see-through
         if (key_hi > 0.0) {
             float luma = dot(t, vec3(0.299, 0.587, 0.114));
             a *= smoothstep(key_lo, key_hi, luma);

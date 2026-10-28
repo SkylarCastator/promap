@@ -56,7 +56,7 @@ def test_panel_follows_media_type(panel):
     # masks and reference photos: no type row
     m = st.add_surface("mask")
     st.select(m.id)
-    assert not p.form.isRowVisible(p.media_type) and not p.form.isRowVisible(p.media_pick)
+    assert p.form.isRowVisible(p.media_type) and p.media_type.currentData() == "mask" and not p.form.isRowVisible(p.media_pick)
     r = st.add_reference_image("media/room.png")
     st.select(r.id)
     assert not p.form.isRowVisible(p.media_type) and p.form.isRowVisible(p.media_pick) and p.media.text().endswith("room.png")
@@ -72,3 +72,35 @@ def test_parameters_button_asks_for_animations_window(panel):
     btn = next(b for b in p.media_pick.widget(1).findChildren(QPushButton))
     btn.click()
     assert got == ["animations"]
+
+
+def test_mask_type_and_hide_tick(panel):
+    from PySide6.QtCore import Qt
+    from promap.ui.surface_menu import surface_menu
+
+    st, p = panel
+    s = st.add_surface("media")
+    st.select(s.id)
+    grid = s.media
+    p.media_type.setCurrentIndex(p.media_type.findData("mask"))
+    assert s.kind == "mask" and s.media == grid and p.form.isRowVisible(p.media_type) and not p.form.isRowVisible(p.media_pick)
+    p.media_type.setCurrentIndex(p.media_type.findData("gen"))
+    assert s.kind == "media" and s.media == grid and p.media_pick.currentIndex() == 1
+    # the list tick hides and shows
+    it = next(p.list.item(i) for i in range(p.list.count()) if p.list.item(i).data(Qt.UserRole) == s.id)
+    assert it.checkState() == Qt.Checked and s.visible
+    it.setCheckState(Qt.Unchecked)
+    assert not s.visible
+    it = next(p.list.item(i) for i in range(p.list.count()) if p.list.item(i).data(Qt.UserRole) == s.id)
+    assert it.checkState() == Qt.Unchecked
+    # the right-click menu carries both as checkable items
+    menu = surface_menu(st, s.id)  # keep the menu alive while its actions are used
+    acts = {a.text(): a for a in menu.actions() if a.text()}
+    assert acts["Hidden"].isChecked() and not acts["Mask (black cut-out)"].isChecked()
+    acts["Hidden"].trigger()
+    assert s.visible
+    acts["Mask (black cut-out)"].trigger()
+    assert s.kind == "mask"
+    m = st.add_surface("mask")
+    st.select(m.id)
+    assert p.media_type.currentData() == "mask"

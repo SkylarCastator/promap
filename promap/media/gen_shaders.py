@@ -29,6 +29,8 @@ out vec4 frag;
 #define PI 3.14159265
 #define TAU 6.28318531
 
+float g_alpha = 1.0;  // an effect may set this inside effect(): 0 = see-through (the alignment grid's background)
+
 float hash11(float n) { return fract(sin(n + u_seed * 17.17) * 43758.5453123); }
 float hash21(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32 + u_seed); return fract(p.x * p.y); }
 vec2 hash22(vec2 p) { float h = hash21(p); return vec2(h, hash21(p + h + 1.7)); }
@@ -80,7 +82,7 @@ void main() {
     vec2 p = vec2((uv.x - 0.5) * 2.0 * aspect, (0.5 - uv.y) * 2.0);
     float t = u_time * u_speed;
     vec3 c = effect(uv, p, t);
-    frag = vec4(clamp(c, 0.0, 1.0), 1.0);
+    frag = vec4(clamp(c, 0.0, 1.0), clamp(g_alpha, 0.0, 1.0));
 }
 """
 
@@ -141,14 +143,18 @@ vec3 effect(vec2 uv, vec2 p, float t) {
     float line = step(0.5 - lw, max(f.x, f.y));    // cell edges
     vec2 e = min(uv, 1.0 - uv) * cells;
     float border = step(min(e.x, e.y), lw * 2.0);
-    vec3 col = mix(u_color2, u_color1, max(line, border));
+    float ink = max(line, border);
+    vec3 col = u_color1;
     if (u_p3 > 0.5) {
         float d1 = abs(uv.x - uv.y), d2 = abs(uv.x + uv.y - 1.0);
         float diag = step(min(d1, d2), lw * 1.4 / cells);
         float ring = step(abs(length((uv - 0.5) * vec2(u_res.x / u_res.y, 1.0)) - 0.25), lw * 1.2 / cells);
         float corner = step(max(g.x, g.y), 1.0) * 0.55;  // top-left cell tinted: orientation
-        col = mix(col, u_color3, max(max(diag, ring), corner));
+        float marks = max(max(diag, ring), corner);
+        col = mix(col, u_color3, step(0.01, marks) * (1.0 - ink));
+        ink = max(ink, marks);
     }
+    g_alpha = ink;  // the background is transparent: only the lines, marks and corner paint
     return col;
 }
 """

@@ -6,7 +6,7 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QGuiApplication, QKeySequence, QCloseEvent, QShortcut
 from PySide6.QtWidgets import (
-    QMainWindow, QDockWidget, QFileDialog, QMessageBox, QInputDialog, QApplication, QLabel, QProgressBar,
+    QMainWindow, QDockWidget, QFileDialog, QMessageBox, QInputDialog, QApplication, QLabel, QProgressBar, QCheckBox,
     QScrollArea, QToolBar, QTabBar, QStackedWidget, QWidget, QVBoxLayout, QSizePolicy,
 )
 
@@ -250,6 +250,8 @@ class MainWindow(QMainWindow):
                 w.setProperty("placed", True)
             if qs.value(f"{key}/open", False, type=bool):
                 w.show()
+        self.outlines_act.setChecked(qs.value("canvas/outlines", True, type=bool))
+        self.labels_act.setChecked(qs.value("canvas/labels", True, type=bool))
 
     def _tool_windows(self):
         return (("camera", self.camera_window), ("animations", self.animations_window), ("cues", self.cues_window))
@@ -261,6 +263,8 @@ class MainWindow(QMainWindow):
         for key, w in self._tool_windows():
             qs.setValue(f"{key}/geometry", w.saveGeometry())
             qs.setValue(f"{key}/open", w.isVisible())
+        qs.setValue("canvas/outlines", self.outlines_act.isChecked())
+        qs.setValue("canvas/labels", self.labels_act.isChecked())
 
     # -- menus -------------------------------------------------------------------
     def _act(self, menu, text, fn, shortcut=None, checkable=False):
@@ -303,6 +307,9 @@ class MainWindow(QMainWindow):
         self._act(vw, "Animations window", self.open_animations_window, "Ctrl+Shift+A")
         self._act(vw, "Cues window", self.open_cues_window, "Ctrl+Shift+U")
         self._act(vw, "Reset panel layout", self.reset_layout)
+        vw.addSeparator()
+        vw.addAction(self.outlines_act)
+        vw.addAction(self.labels_act)
         # Keyboard-only actions (the buttons live in the strip at the top of the viewer)
         for text, fn, key, checkable in [
             ("Zoom in", lambda: self.canvas.zoom_by(1.25), "Ctrl++", False),
@@ -379,11 +386,16 @@ class MainWindow(QMainWindow):
         name = self.output.screen().name() if live and self.output.screen() else ""
         self.live_act.setText(f"■ Live on {name}" if live else "● Project")
 
-    def open_output(self, screen_name: str | None = None):
+    def _pick_screen(self, screen_name: str | None):
         screens = QGuiApplication.screens()
         screen = next((s for s in screens if s.name() == screen_name), None)
         if screen is None:
             screen = next((s for s in screens if s is not self.screen()), screens[0])
+        return screen, screens
+
+    def open_output(self, screen_name: str | None = None):
+        QApplication.processEvents()  # a monitor just plugged in: let Qt rebuild its screen list first
+        screen, screens = self._pick_screen(screen_name)
         if screen is self.screen() and len(screens) > 1:
             if QMessageBox.question(self, "Open output", f"{screen.name()} is the screen this editor is on. The output window is "
                                     "fullscreen and stays on top, so it will cover the editor (Esc in it closes it, Ctrl+W too). "
@@ -392,7 +404,11 @@ class MainWindow(QMainWindow):
         self.close_output()
         self.output = OutputWindow(self.state)
         self.output.closed.connect(self._output_closed)
-        self.output.open_on(screen)
+        try:
+            self.output.open_on(screen)
+        except RuntimeError:  # the QScreen went stale under us (monitor change): look it up again
+            screen, _ = self._pick_screen(screen_name)
+            self.output.open_on(screen)
         self.state.project.output_screen = screen.name()
         self.statusBar().showMessage(f"Output on {screen.name()} (Esc in that window closes it)", 5000)
         self.activateWindow()
@@ -548,6 +564,30 @@ class MainWindow(QMainWindow):
         self.zoom_label = label(self._bar_2d, "100%", "Canvas zoom relative to fit")
         btn(self._bar_2d, "+", "Zoom in  (Ctrl++, or wheel)", lambda: self.canvas.zoom_by(1.25))
         btn(self._bar_2d, "Fit", "Zoom to fit the output in the canvas  (Ctrl+0)", self.canvas.zoom_fit)
+        self._bar_2d.append(bar.addSeparator())
+        def tick(group, text, tip, fn, key):
+            # a tick box in the strip, mirrored by a checkable View menu action that owns the shortcut
+            box = QCheckBox(text)
+            box.setChecked(True)
+            box.setToolTip(tip)
+            box.setStatusTip(tip)
+            box.setStyleSheet("QCheckBox { padding: 0 4px; }")
+            group.append(bar.addWidget(box))
+            a = QAction(text, self)
+            a.setCheckable(True)
+            a.setChecked(True)
+            a.setToolTip(tip)
+            a.setShortcut(QKeySequence(key))
+            a.setShortcutContext(Qt.ApplicationShortcut)
+            a.toggled.connect(box.setChecked)
+            box.toggled.connect(a.setChecked)
+            box.toggled.connect(fn)
+            return a
+
+        self.outlines_act = tick(self._bar_2d, "Outlines", "Show / hide the outlines and corner handles over every surface, "
+                                 "to see the media as the projector shows it  (H)", self.canvas.set_show_outlines, "H")
+        self.labels_act = tick(self._bar_2d, "Labels", "Show / hide the name tag at each surface's centre  (Shift+H)",
+                               self.canvas.set_show_labels, "Shift+H")
         self._bar_2d.append(bar.addSeparator())
         label(self._bar_2d, "wheel zooms · middle-drag or Alt-drag pans · L lasso",
               "Ctrl+wheel zooms the camera preview and the timeline")

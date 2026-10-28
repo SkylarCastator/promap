@@ -113,9 +113,9 @@ for e in [
     Effect("alignment_grid", "Alignment grid", "mapping",
            [P("p1", "Cells", 8.0, 2.0, 24.0, 1.0, "squares across the surface"), P("p2", "Line width", 0.12, 0.02, 0.5, 0.01),
             P("p3", "Marks", 1.0, 0.0, 1.0, 1.0, "1 = diagonals, centre ring and a tinted top-left cell")],
-           "A square grid with a border, diagonals, a centre ring and a marked corner: the default on a new "
-           "surface, so warp, stretch and flips are obvious while you map.",
-           defaults={"color1": "ffffff", "color2": "202024", "color3": "ff8a00", "speed": 0.0}, static=True),
+           "A square grid with a border, diagonals, a centre ring and a marked corner on a transparent "
+           "background: the default on a new surface, so warp, stretch and flips are obvious while you map.",
+           defaults={"color1": "ffffff", "color3": "ff8a00", "speed": 0.0}, static=True),
     Effect("bauhaus_shapes", "Bauhaus shapes", "geometric", [P("p1", "Shuffle", 0.5, help="how often tiles change")],
            "A grid of circles, half-circles, squares and triangles in primaries.",
            defaults={"color1": "d7263d", "color2": "1b4fd8", "color3": "f4c20d"}),

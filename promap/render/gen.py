@@ -59,7 +59,7 @@ class GenRenderer:
         if entry is not None:
             entry[0].release()
             entry[1].release()
-        tex = self.ctx.texture(size, 3)
+        tex = self.ctx.texture(size, 4)  # RGBA: effects can leave parts see-through
         tex.filter = (moderngl.LINEAR, moderngl.LINEAR)
         tex.repeat_x = tex.repeat_y = False
         fbo = self.ctx.framebuffer(color_attachments=[tex])

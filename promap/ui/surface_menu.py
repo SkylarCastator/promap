@@ -45,4 +45,18 @@ def surface_menu(state: AppState, sid: str, parent=None) -> QMenu | None:
 
     add("Locked", toggle_lock, checkable=True, checked=s.locked,
         tip="A locked surface ignores the mouse in the canvas (reference photos, finished quads)")
+
+    def toggle_hidden():
+        s.visible = not s.visible
+        state.surface_edited(sid)
+
+    add("Hidden", toggle_hidden, checkable=True, checked=not s.visible,
+        tip="Keep the surface but draw nothing for it on the output (the tick in the list does the same)")
+    if s.kind in ("media", "mask"):
+        def toggle_mask():
+            s.kind = "media" if s.kind == "mask" else "mask"
+            state.surface_edited(sid)
+
+        add("Mask (black cut-out)", toggle_mask, checkable=True, checked=s.kind == "mask",
+            tip="A mask paints black to blank spill; its media is kept for when it becomes a surface again")
     return m

@@ -419,14 +419,21 @@ class CameraPanel(QWidget):
             return True
         return super().eventFilter(obj, ev)
 
+    def _main(self):
+        """The editor's main window. This panel lives in its own tool window, whose parent is the editor."""
+        w = self.window()
+        while w is not None and not hasattr(w, "output"):
+            w = w.parent().window() if w.parent() is not None else None
+        return w
+
     # -- calibration -----------------------------------------------------------------------
     def _calibrate(self):
         if self.camera is None:
             QMessageBox.information(self, "Calibrate", "Start the camera first.")
             return
-        win = self.window()
+        win = self._main()
         if getattr(win, "output", None) is None:
-            QMessageBox.information(self, "Calibrate", "Open the output window on the projector first (Output → Open on screen).")
+            QMessageBox.information(self, "Calibrate", "Open the output window on the projector first (Project / F5, or Output → Open on screen).")
             return
         self.detections = []
         w, h = self.state.project.output_size
@@ -498,8 +505,8 @@ class CameraPanel(QWidget):
         if self.state.calibration is None:
             QMessageBox.information(self, "Scan scene", "Calibrate first: the scan needs the projector footprint and the depth map.")
             return
-        if getattr(self.window(), "output", None) is None:
-            QMessageBox.information(self, "Scan scene", "Open the output window on the projector first.")
+        if getattr(self._main(), "output", None) is None:
+            QMessageBox.information(self, "Scan scene", "Open the output window on the projector first (Project / F5).")
             return
         self.detections = []
         w, h = self.state.project.output_size
