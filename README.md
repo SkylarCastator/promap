@@ -1,7 +1,56 @@
-# promap — projection mapping editor and show runner
+# promap
 
-Python / Qt / OpenGL tool for pinning animations, GIFs, videos and images onto
-real-world objects with a projector, then running them as a cued live show.
+**Projection mapping editor and live show runner.** Pin animations, GIFs, videos and
+images onto real objects with a projector, calibrate against a webcam or Kinect, then run
+the result as a cued show. Python, Qt, OpenGL.
+
+![The editor: surfaces warped onto a reference photo of the room](docs/images/editor.png)
+
+> **Platform.** promap has only been built and tested on **Linux** (Ubuntu 24.04, X11,
+> Python 3.12, OpenGL 3.3 core). Nothing in it is Linux-specific on purpose, but macOS
+> and Windows are untested and the Kinect and PortAudio setup notes below assume a Debian
+> family distro.
+
+## Features
+
+- **Surfaces.** Quads with a GPU perspective warp, triangle meshes for anything that is not
+  a flat rectangle, masks to blank spill, reference photos as an editor-only underlay, and
+  a lasso tool that traces a prop into a mesh.
+- **Media of every kind.** Images, animated GIF / WebP, video (with its own audio), and
+  twenty built-in GLSL animations with live parameters. Per-surface tint, opacity, luma key,
+  flips, speed and audio-reactive scale / opacity / gain.
+- **Cues as timelines.** Each cue is a sequence of clips per surface with fades, a length,
+  and a choice of loop / next / stop at the end. GO, Back, blackout, preview mode, a
+  soundtrack per cue, and undo across everything.
+- **Camera calibration.** Gray-code structured light from a USB webcam gives a
+  projector-to-camera map; a photometric scan separates direct light, bounce, colour,
+  depth and shadow; blob and edge detection turns props into surfaces.
+- **Kinect v1 and v2.** Depth-based prop detection, plane finding, a live person mask or
+  spotlight, MediaPipe skeleton tracking, and a point cloud in the 3D view.
+- **3D scene.** A Panda3D simulation of the projector, cameras and props that shows the
+  live output landing on the geometry, from any angle or through any lens.
+- **Generate with ComfyUI.** Turn a surface's crop of the reference photo into a prompt for
+  an image-to-video model and bring the clip back as media.
+- **Hardware library.** Projectors, cameras and depth sensors with their optics, kept
+  outside any project.
+
+## Built-in animations
+
+Every effect is a fragment shader with speed, scale, three colours, a seed and one or two
+effect-specific knobs. They live in a surface, a cue or a project file as a string such as
+`gen:neon_glow?speed=2&color1=ff00aa`.
+
+![Six of the built-in animations](docs/images/animations.gif)
+
+![All twenty-one effects](docs/images/animations.png)
+
+## More of the editor
+
+| Cue editor | Animations window |
+|---|---|
+| ![Cue editor: one track per surface, clips with fades](docs/images/cues.png) | ![Animations window with the neon glow parameters](docs/images/animations_window.png) |
+
+![3D scene: the live output projected onto a wall, a crate and a pumpkin](docs/images/editor_3d.png)
 
 ## Install
 
@@ -11,12 +60,15 @@ uv pip install -e ".[dev]"
 .venv/bin/python examples/make_demo_media.py   # generates examples/media/*
 ```
 
+Audio needs PortAudio (`sudo apt install libportaudio2`); without it the app runs silently
+and says so in the status bar. Kinect drivers are covered under *Kinect* below.
+
 ## Run
 
 ```bash
-.venv/bin/promap examples/demo.promap            # editor; press Project (F5) when ready to go live
-.venv/bin/promap show.promap --output HDMI-1 --cue 1   # straight into the show, output already open
-.venv/bin/python -m pytest                        # tests (GPU tests skip without GL)
+.venv/bin/promap examples/demo.promap                 # editor; press Project (F5) to go live
+.venv/bin/promap show.promap --output HDMI-1 --cue 1  # straight into the show, output open
+.venv/bin/python -m pytest                            # tests (GPU tests skip without GL)
 ```
 
 ## Workflow
@@ -31,18 +83,22 @@ uv pip install -e ".[dev]"
 3. The tool palette down the left of the canvas adds things to the scene: **▢ Media**
    adds a surface (a quad), **△** a triangle, **▣** a mask, **▦** a reference photo,
    **⌇** the lasso. Every new surface starts out showing an **alignment grid** (a built-in
-   animation: square cells, border, diagonals, centre ring, a marked corner) so keystone,
-   stretch and flips are obvious while you drag its corners in the canvas until it hugs
-   the object; then give it real media. Drag inside to move the whole quad. Arrow keys nudge the
-   active corner (Tab cycles corners, Shift = 10 px steps, Shift-drag snaps to 10 px).
-   **▣ Mask** adds a black quad to blank out spill (a window, a doorway).
-4. Pick the surface's **Type**: image, video, animated image (GIF / WebP) or a built-in
-   animation. The picker and the options below follow the type: Loop and Speed only for
-   things that move, Video audio only for video, and for an animation a drop-down of
-   effects plus **Parameters…**, which opens the Animations window on it with live edits.
-   Surfaces are drawn in list order. Right-click a
-   surface, in the list or in the canvas, for Duplicate, Delete, Bring to front / Move
-   up / Move down / Send to back, and Lock. Delete in the list removes the selected one.
+   animation: square cells, border, diagonals, centre ring, a marked corner, see-through
+   between the lines) so keystone, stretch and flips are obvious while you drag its corners
+   in the canvas until it hugs the object; then give it real media. Drag inside to move the
+   whole quad. Arrow keys nudge the active corner (Tab cycles corners, Shift = 10 px steps,
+   Shift-drag snaps to 10 px). **▣ Mask** adds a black quad to blank out spill (a window, a
+   doorway). **Outlines** and **Labels** in the strip above the canvas (H, Shift+H, also
+   under View) hide the corner handles and name tags so the media shows bare, the way the
+   projector sees it.
+4. Pick the surface's **Type**: image, video, animated image (GIF / WebP), a built-in
+   animation, or **Mask** (a black cut-out; its media is kept for when it becomes a surface
+   again). The tick beside each surface in the list hides and shows it on the output. The
+   picker and the options below follow the type: Loop and Speed only for things that move,
+   Video audio only for video, and for an animation a drop-down of effects plus
+   **Parameters…**, which opens the Animations window on it with live edits. Surfaces are
+   drawn in list order. Right-click a surface, in the list or in the canvas, for Duplicate,
+   Delete, Bring to front / Move up / Move down / Send to back, Lock, Hidden and Mask.
 5. **Cues**: set each surface's media the way a moment of the show should look, then
    **+ → Cue from editor** in the Cues window. A cue is a sequence of clips per surface with
    fades (see *Cues as sequences*); a crossfade length and an optional hold time for
@@ -56,49 +112,38 @@ uv pip install -e ".[dev]"
 Project files are JSON (`.promap`); media paths are stored relative to the project
 file so a show folder can be copied whole.
 
-**Reference photos.** **▦** in the tool palette loads a photo of the space (ideally shot from the
-projector's lens position) as a half-transparent layer under everything in the editor
-only; it never reaches the projector. Drag its corners to line it up with the projected
-test pattern, then tick **Lock** so it stops catching the mouse.
+### Surface details
 
-**Lands on / notes.** Each surface and 3D prop records what it lands on (wall, curved
-object, decoration, ...). Informational today; it is the hook for per-type warping later.
+- **Reference photos.** **▦** loads a photo of the space (ideally shot from the projector's
+  lens position) as a half-transparent layer under everything in the editor only; it never
+  reaches the projector. Line it up with the projected test pattern, then tick **Lock**.
+- **Lands on / notes.** Each surface and 3D prop records what it lands on (wall, curved
+  object, decoration, ...). Informational today; the hook for per-type warping later.
+- **Tint.** A colour multiplier per surface (white = unchanged): recolour a clip per surface,
+  or per cue, without regenerating media.
+- **Black = transparent.** A per-surface luma key: pixels darker than the threshold (0..1,
+  default 0.12, soft edge just above it) let the layers underneath show through, so a clip
+  on a black background composites over another surface instead of painting black on it.
+- **Undo / redo.** Every change to the project document is undoable: **Ctrl+Z** /
+  **Ctrl+Shift+Z** (or Ctrl+Y). A drag is one step however long it lasts; slider edits
+  within 0.4 s of each other merge; camera-driven updates never enter the history. Up to
+  200 steps are kept; loading a project clears them.
+- **Lasso tool (L).** Drag freehand round an object, or click out the corners, then
+  double-click or Enter to close (Esc cancels). The outline is simplified and triangulated
+  into a mesh surface named `Lasso n`. The quick way to trace a prop by eye when the camera
+  is not set up.
 
-**Tint.** Every surface has a colour multiplier (white = unchanged). It is the quick way
-to recolour a clip per surface, or per cue via the editor, without regenerating media.
+### Viewer tabs, panels and windows
 
-**Black = transparent.** A per-surface luma key: pixels darker than the threshold (0..1,
-default 0.12, soft edge just above it) let the layers underneath show through, so a clip on
-a black background composites over another surface instead of painting black on it.
+Above the viewer: one tab per output screen, **All** (every output in one view) and
+**3D**. The strip under the tabs holds the view's own controls: zoom −/+/Fit on a screen
+tab (Ctrl+-, Ctrl++, Ctrl+0), Orbit / Projector / Reset / Grid / Pop out on the 3D tab.
 
-**Undo / redo.** Every change to the project document (surfaces, corners, media, cues,
-props, hardware) is undoable: **Ctrl+Z** / **Ctrl+Shift+Z** (or Ctrl+Y). A corner or quad
-drag is one step however long it lasts; slider-style edits that land within 0.4 s of each
-other merge into one step; the live People surface and other camera-driven updates never
-enter the history. Up to 200 steps are kept; loading a project clears them.
-
-**Lasso tool (L).** **⌇** in the tool palette, or press **L** in the canvas. Drag freehand round an
-object, or click out the corners one by one, then double-click or press Enter to close
-the loop (Esc cancels). The outline is simplified and triangulated into a new mesh
-surface named `Lasso n`, ready for media like any other mesh. It is the quick way to
-trace a prop by eye off a reference photo or the projected test pattern when the camera
-isn't set up.
-
-**Viewer tabs.** Above the viewer: one tab per output screen, **All** (every output in
-one view) and **3D**. The 3D tab shows the Panda3D scene in place of the canvas and turns
-the side panel into **3D scene**; a screen tab turns it back into **Surfaces**. The strip
-under the tabs holds the view's own controls, Unity style: zoom −/+/Fit on a screen tab
-(Ctrl+-, Ctrl++, Ctrl+0 also work), and Orbit / Projector / Reset / Grid / Pop out on the
-3D tab.
-
-**Panels and windows.** The side panel (Surfaces / 3D scene) is a dock. Drag one
-out by its title bar, or double-click the title, and it becomes its own window; close any
-of them and bring it back from **View → Panels**; **Reset panel layout** puts everything
-back. Camera and Animations are separate windows from the start: **View → Camera window**
-(Ctrl+Shift+C) and **View → Animations window** (Ctrl+Shift+A) open them beside the
-editor, **View → Cues & timeline window** (Ctrl+Shift+U) opens the playable content below
-it, and any of them can sit on a second screen. Window positions, and which were open,
-are remembered between runs.
+The side panel (Surfaces / 3D scene) is a dock: drag it out by its title bar and it
+becomes its own window; **View → Panels** brings closed ones back and **Reset panel
+layout** restores everything. Camera (Ctrl+Shift+C), Animations (Ctrl+Shift+A) and Cues
+(Ctrl+Shift+U) are separate windows under **View**, so any of them can sit on a second
+screen. Window positions, and which were open, are remembered between runs.
 
 ## Triangle meshes
 
@@ -175,9 +220,9 @@ Set `PROMAP_NO_CAMERA_SCAN=1` to skip the camera probe altogether (headless runs
 probe reads a frame from every video node, which blinks a laptop's webcam LED). The test
 suite sets it for itself.
 
-## Kinect v2
+## Kinect
 
-The Kinect for Xbox One (time-of-flight depth, 512x424) is driven by libfreenect2, which is
+**Kinect v2** (Xbox One, time-of-flight depth, 512x424) is driven by libfreenect2, which is
 not packaged. `scripts/setup_kinect.sh --check` reports what is missing; the full script
 builds the driver into `~/.local/freenect2` and installs the `freenect2` Python binding
 into the venv with an rpath, so nothing needs setting at launch. Two steps need sudo and
@@ -243,9 +288,9 @@ The last group in the Camera window needs a running Kinect:
   `~/.local/share/promap/models/`. Joint positions are the hook for triggering cues or
   steering media later.
 
-## Scripted animations
+## Scripted animations (the Animations window)
 
-Twenty animations are code, not files: GLSL fragment shaders drawn on the GPU every frame
+Twenty animations (plus the alignment grid, a mapping aid) are code, not files: GLSL fragment shaders drawn on the GPU every frame
 with parameters you can change while they run. The **Animations** window (View → Animations window, Ctrl+Shift+A) lists them with a live preview and a parameter editor generated from each one's
 spec: speed, scale, three colours, a seed, and one or two effect-specific knobs (glow width,
 pixel size, text, ...). *Assign to surface* puts the animation on the selected surface, in
@@ -394,18 +439,21 @@ to pan, wheel to zoom. Orbit and projector views are also buttons in the strip a
 
 ```
 promap/
-  model/geometry.py   homography (projective warp) maths, hit-testing
-  model/mesh.py       triangle meshes: shared vertices, UVs, extrude / weld / subdivide
-  model/project.py    Project / Surface / Cue dataclasses, JSON I/O
-  camera/capture.py   USB camera discovery + threaded grabber
-  camera/graycode.py  Gray-code structured light: patterns, decode, Calibration (H + dense map)
-  camera/detect.py    blobs -> simplified contours -> ear-clipped triangle meshes
-  media/sources.py    frame sources: image, GIF/WebP, video (OpenCV), test pattern
-  show/engine.py      cues -> layers with crossfades -> RenderItems
-  render/renderer.py  moderngl: textured quads with GPU perspective warp, masks
-  model/scene.py      projector / cameras / props for the 3D simulation
-  scene/view3d.py     Panda3D window: frustums, props, output projected onto them
-  ui/                 Qt: state (signals), canvas, output window, panels, main window
+  model/geometry.py    homography (projective warp) maths, hit-testing
+  model/mesh.py        triangle meshes: shared vertices, UVs, extrude / weld / subdivide
+  model/project.py     Project / Surface / Cue / Clip dataclasses, JSON I/O
+  model/scene.py       projector / cameras / props for the 3D simulation
+  camera/capture.py    USB camera discovery + threaded grabber
+  camera/graycode.py   Gray-code structured light: patterns, decode, Calibration (H + dense map)
+  camera/detect.py     blobs -> simplified contours -> ear-clipped triangle meshes
+  camera/kinect.py     Kinect v2 (libfreenect2); kinect1.py: Kinect v1 (libfreenect, ctypes)
+  media/sources.py     frame sources: image, GIF/WebP, video (OpenCV), test pattern
+  media/generative.py  scripted animation specs + gen: media strings; gen_shaders.py: the GLSL
+  show/engine.py       cues -> layers with crossfades -> RenderItems
+  render/renderer.py   moderngl: textured quads with GPU perspective warp, masks
+  render/gen.py        draws scripted animations into textures
+  scene/view3d.py      Panda3D window: frustums, props, output projected onto them
+  ui/                  Qt: state (signals), canvas, output window, panels, cue editor, main window
 ```
 
 The warp is done by handing the GPU homogeneous corner coordinates, so the
@@ -415,11 +463,10 @@ work in Python.
 ## Roadmap
 
 - Bezier / mesh warping for curved props; per-surface soft edge masks.
-- Timeline view, MIDI / OSC triggers, scheduled start.
+- MIDI / OSC triggers, scheduled start, cues fired from skeleton joints.
 - 3D-authored output: texture the props in the 3D scene and render the output *from*
   the projector's lens, instead of hand-dragging 2D quads.
-- Kinect v2 depth input (libfreenect2): point cloud in the 3D scene, calibrated against
-  the projector, and depth-reactive animations.
+- Depth-reactive animations from the Kinect point cloud.
 - Known artefact: Panda's projective texturing also paints props *behind* the projector
   (mirrored), as fixed-function projection has no front/back test.
 
